@@ -58,12 +58,12 @@ impl Matrix {
         self.t_data[j][i] = val;
     }
 
-    fn row(&self, idx: usize) -> Vec<i32> {
-        self.data[idx].clone()
+    fn row(&self, idx: usize) -> &Vec<i32> {
+        &self.data[idx]
     }
 
-    fn col(&self, idx: usize) -> Vec<i32> {
-        self.t_data[idx].clone()
+    fn col(&self, idx: usize) -> &Vec<i32> {
+        &self.t_data[idx]
     }
 
     fn naive_col(&self, idx: usize) -> Vec<i32> {
