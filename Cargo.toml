@@ -16,6 +16,9 @@ criterion = "0.3.4"
 name = "fmm"
 path = "src/lib.rs"
 
+[[bin]]
+name = "fmm"
+path = "src/main.rs"
 
 [[bench]]
 name = "benches"
