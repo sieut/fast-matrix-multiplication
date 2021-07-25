@@ -1,6 +1,7 @@
 extern crate rand;
 
 const LINESIZE: usize = 64;
+const INTS_PER_LINE: usize = LINESIZE / 4;
 
 pub struct Matrix {
     pub data: Vec<i32>,
@@ -63,6 +64,34 @@ impl Matrix {
         mat
     }
 
+    pub fn cacheline_optimized_col_mul(a: &Matrix, b: &Matrix) -> Matrix {
+        assert_eq!(a.dim.1, b.dim.0);
+        let mut mat = Matrix::new((a.dim.0, b.dim.1));
+        let mut buffer = [0i32; INTS_PER_LINE];
+        for i in 0..mat.dim.0 {
+            let row = a.row(i);
+            for j in (0..mat.dim.1).step_by(INTS_PER_LINE) {
+                let cols = b.cols_iter(j);
+                let per_iter = cols.per_iter;
+                row.iter().zip(cols)
+                    .for_each(|(row_ele, cols_ele)|
+                        Matrix::row_cols_mul(row_ele, cols_ele, &mut buffer));
+                for k in j..j + per_iter {
+                    mat.set(i, k, buffer[k - j]);
+                }
+                buffer = [0i32; INTS_PER_LINE];
+            }
+        }
+        mat
+    }
+
+    fn row_cols_mul(row_ele: &i32, cols_ele: &[i32], buffer: &mut [i32]) {
+        // TODO SIMD
+        for (i, col_ele) in cols_ele.iter().enumerate() {
+            buffer[i] += row_ele * col_ele;
+        }
+    }
+
     pub fn preload_slice_mul(a: &Matrix, b: &Matrix) -> Matrix {
         assert_eq!(a.dim.1, b.dim.0);
         let mut mat = Matrix::new((a.dim.0, b.dim.1));
@@ -107,6 +136,10 @@ impl Matrix {
         vec
     }
 
+    fn cols_iter(&self, idx: usize) -> ColsIter {
+        ColsIter::new(self, idx)
+    }
+
     pub fn rand_matrix(dim: (usize, usize)) -> Matrix {
         let mut mat = Matrix::new(dim);
         for i in 0..mat.dim.0 {
@@ -115,5 +148,37 @@ impl Matrix {
             }
         }
         mat
+    }
+}
+
+struct ColsIter<'a> {
+    mat: &'a Matrix,
+    col_idx: usize,
+    per_iter: usize,
+    idx: usize,
+}
+
+impl<'a> ColsIter<'a> {
+    pub fn new(mat: &'a Matrix, col_idx: usize) -> Self {
+        ColsIter {
+            mat,
+            col_idx,
+            per_iter: std::cmp::min(INTS_PER_LINE, mat.dim.1 - col_idx),
+            idx: 0,
+        }
+    }
+}
+
+impl<'a> std::iter::Iterator for ColsIter<'a> {
+    type Item = &'a [i32];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.mat.dim.0 {
+            None
+        } else {
+            let data_idx = self.idx * self.mat.row_size + self.col_idx;
+            self.idx += 1;
+            Some(&self.mat.data[data_idx..data_idx + self.per_iter])
+        }
     }
 }
