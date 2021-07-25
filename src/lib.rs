@@ -43,10 +43,8 @@ impl Matrix {
         for i in 0..a.dim.0 {
             let row = a.row(i);
             for j in 0..b.dim.1 {
-                let mut sum = 0;
-                for (x, y) in row.iter().zip(b.col(j).iter()) {
-                    sum += x * y;
-                }
+                let sum = row.iter().zip(b.col(j).iter())
+                    .map(|(x, y)| x * y).sum();
                 mat.set(i, j, sum);
             }
         }
