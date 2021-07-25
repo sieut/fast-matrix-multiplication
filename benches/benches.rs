@@ -21,15 +21,13 @@ pub fn cached_tdata_benchmark(c: &mut Criterion) {
         |bencher| bencher.iter(|| Matrix::cached_tdata_mul(&a, &b)));
 }
 
-fn rand_matrix(dim: (usize, usize)) -> Matrix {
-    let mut mat = Matrix::new(dim);
-    for i in 0..mat.dim.0 {
-        for j in 0..mat.dim.1 {
-            mat.set(i, j, rand::random());
-        }
-    }
-    mat
+pub fn preload_slice_benchmark(c: &mut Criterion) {
+    let a = Matrix::rand_matrix((100, 120));
+    let b = Matrix::rand_matrix((120, 200));
+    c.bench_function(
+        "Preload Slices Matrix Multiplication",
+        |bencher| bencher.iter(|| Matrix::preload_slice_mul(&a, &b)));
 }
 
-criterion_group!(benches, naive_benchmark, cached_tdata_benchmark);
+criterion_group!(benches, naive_benchmark, cached_tdata_benchmark, preload_slice_benchmark);
 criterion_main!(benches);

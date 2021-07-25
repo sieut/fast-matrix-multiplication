@@ -16,11 +16,13 @@ impl Matrix {
         let line_per_row = (dim.1 * 4) / LINESIZE +
             ((dim.1 % LINESIZE != 0) as usize);
         let row_size = line_per_row * LINESIZE / 4;
+        // One extra row is allocated for preloading in preload_slice_mul
         let data = vec![0; row_size * (dim.0 + 1)];
         // Allocate Vec for tdata, aligning each row with cache line
         let line_per_row = (dim.0 * 4) / LINESIZE +
             ((dim.0 % LINESIZE != 0) as usize);
         let tdata_row_size = line_per_row * LINESIZE / 4;
+        // One extra row is allocated for preloading in preload_slice_mul
         let tdata = vec![0; tdata_row_size * (dim.1 + 1)];
         Matrix {
             data,
@@ -57,6 +59,23 @@ impl Matrix {
                     .map(|(x, y)| x * y).sum();
                 mat.set(i, j, sum);
             }
+        }
+        mat
+    }
+
+    pub fn preload_slice_mul(a: &Matrix, b: &Matrix) -> Matrix {
+        assert_eq!(a.dim.1, b.dim.0);
+        let mut mat = Matrix::new((a.dim.0, b.dim.1));
+        let mut row = a.row(0);
+        for i in 0..a.dim.0 {
+            let mut col = b.col(0);
+            for j in 0..b.dim.1 {
+                let sum = row.iter().zip(col.iter())
+                    .map(|(x, y)| x * y).sum();
+                mat.set(i, j, sum);
+                col = b.col(j + 1);
+            }
+            row = a.row(i + 1);
         }
         mat
     }
