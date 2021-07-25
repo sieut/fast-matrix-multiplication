@@ -1,23 +1,33 @@
+extern crate rand;
+
+const LINESIZE: usize = 64;
+
 pub struct Matrix {
-    pub data: Vec<Vec<i32>>,
-    pub t_data: Vec<Vec<i32>>,
+    pub data: Vec<i32>,
+    pub tdata: Vec<i32>,
     pub dim: (usize, usize),
+    row_size: usize,
+    tdata_row_size: usize,
 }
 
 impl Matrix {
     pub fn new(dim: (usize, usize)) -> Self {
-        let mut data = Vec::with_capacity(dim.0);
-        for _ in 0..dim.0 {
-            data.push(vec![0; dim.1]);
-        }
-        let mut t_data = Vec::with_capacity(dim.1);
-        for _ in 0..dim.1 {
-            t_data.push(vec![0; dim.0]);
-        }
+        // Allocate Vec for data, aligning each row with cache line
+        let line_per_row = (dim.1 * 4) / LINESIZE +
+            ((dim.1 % LINESIZE != 0) as usize);
+        let row_size = line_per_row * LINESIZE / 4;
+        let data = vec![0; row_size * (dim.0 + 1)];
+        // Allocate Vec for tdata, aligning each row with cache line
+        let line_per_row = (dim.0 * 4) / LINESIZE +
+            ((dim.0 % LINESIZE != 0) as usize);
+        let tdata_row_size = line_per_row * LINESIZE / 4;
+        let tdata = vec![0; tdata_row_size * (dim.1 + 1)];
         Matrix {
             data,
-            t_data,
+            tdata,
             dim,
+            row_size,
+            tdata_row_size,
         }
     }
 
@@ -51,23 +61,29 @@ impl Matrix {
         mat
     }
 
+    pub fn get(&self, i: usize, j: usize) -> i32 {
+        return self.data[i * self.row_size + j];
+    }
+
     pub fn set(&mut self, i: usize, j: usize, val: i32) {
-        self.data[i][j] = val;
-        self.t_data[j][i] = val;
+        self.data[i * self.row_size + j] = val;
+        self.tdata[j * self.tdata_row_size + i] = val;
     }
 
-    fn row(&self, idx: usize) -> &Vec<i32> {
-        &self.data[idx]
+    fn row(&self, idx: usize) -> &[i32] {
+        let start = idx * self.row_size;
+        &self.data[start..start + self.dim.1]
     }
 
-    fn col(&self, idx: usize) -> &Vec<i32> {
-        &self.t_data[idx]
+    fn col(&self, idx: usize) -> &[i32] {
+        let start = idx *self.tdata_row_size;
+        &self.tdata[start..start + self.dim.0]
     }
 
     fn naive_col(&self, idx: usize) -> Vec<i32> {
         let mut vec = Vec::with_capacity(self.dim.0);
-        for row in self.data.iter() {
-            vec.push(row[idx]);
+        for row in 0..self.dim.0 {
+            vec.push(self.get(row, idx));
         }
         vec
     }
