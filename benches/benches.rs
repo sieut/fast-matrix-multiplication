@@ -1,22 +1,21 @@
-#[macro_use]
 extern crate criterion;
-extern crate fast_matrix_multiplication;
+extern crate fmm;
 extern crate rand;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use fast_matrix_multiplication::Matrix;
+use fmm::Matrix;
 
 pub fn naive_benchmark(c: &mut Criterion) {
-    let a = rand_matrix((100, 120));
-    let b = rand_matrix((120, 200));
+    let a = Matrix::rand_matrix((100, 120));
+    let b = Matrix::rand_matrix((120, 200));
     c.bench_function(
         "Naive Multiplication",
         |bencher| bencher.iter(|| Matrix::naive_mul(&a, &b)));
 }
 
 pub fn cached_tdata_benchmark(c: &mut Criterion) {
-    let a = rand_matrix((100, 120));
-    let b = rand_matrix((120, 200));
+    let a = Matrix::rand_matrix((100, 120));
+    let b = Matrix::rand_matrix((120, 200));
     c.bench_function(
         "Cached Matrix Transpose Multiplication",
         |bencher| bencher.iter(|| Matrix::cached_tdata_mul(&a, &b)));

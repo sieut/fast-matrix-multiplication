@@ -73,4 +73,14 @@ impl Matrix {
         }
         vec
     }
+
+    pub fn rand_matrix(dim: (usize, usize)) -> Matrix {
+        let mut mat = Matrix::new(dim);
+        for i in 0..mat.dim.0 {
+            for j in 0..mat.dim.1 {
+                mat.set(i, j, rand::random::<i16>() as i32);
+            }
+        }
+        mat
+    }
 }
