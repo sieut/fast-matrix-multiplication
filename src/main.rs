@@ -3,8 +3,8 @@ extern crate fmm;
 use fmm::Matrix;
 
 pub fn main() {
-    let a = Matrix::rand_matrix((100, 120));
-    let b = Matrix::rand_matrix((120, 200));
-    let mul = Matrix::cached_tdata_mul(&a, &b);
+    let a = Matrix::rand_matrix((1000, 1000));
+    let b = Matrix::rand_matrix((1000, 1000));
+    let mul = Matrix::cacheline_optimized_col_mul(&a, &b);
     print!("{:?}", mul.dim);
 }
