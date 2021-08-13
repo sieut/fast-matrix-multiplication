@@ -100,6 +100,7 @@ impl Matrix {
             use std::arch::x86_64::{
                 _mm256_set_epi32, _mm256_load_si256, _mm256_mullo_epi32,
                 _mm256_add_epi32, __m256i};
+            // Optimized by Rust by using broadcast instr
             let scalar = _mm256_set_epi32(
                 scalar.clone(), scalar.clone(), scalar.clone(), scalar.clone(),
                 scalar.clone(), scalar.clone(), scalar.clone(), scalar.clone());
