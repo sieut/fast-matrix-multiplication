@@ -5,9 +5,9 @@ const INTS_PER_LINE: usize = LINESIZE / 4;
 
 pub struct Matrix {
     pub data: Vec<i32>,
-    pub tdata: Vec<i32>,
     pub dim: (usize, usize),
     row_size: usize,
+    pub tdata: Vec<i32>,
     tdata_row_size: usize,
 }
 
@@ -23,8 +23,7 @@ impl Matrix {
         let line_per_row = (dim.0 * 4) / LINESIZE +
             ((dim.0 % LINESIZE != 0) as usize);
         let tdata_row_size = line_per_row * LINESIZE / 4;
-        // One extra row is allocated for preloading in preload_slice_mul
-        let tdata = vec![0; tdata_row_size * (dim.1 + 1)];
+        let tdata = vec![0; tdata_row_size * dim.1];
         Matrix {
             data,
             tdata,
@@ -75,9 +74,8 @@ impl Matrix {
                 row.iter().zip(cols)
                     .for_each(|(row_ele, cols_ele)|
                         Matrix::vec_scalar_mul(row_ele, cols_ele, &mut buffer));
-                for k in j..j + INTS_PER_LINE {
-                    mat.data[i * mat.row_size + k] = buffer[k - j];
-                }
+                let start = i * mat.row_size + j;
+                mat.data[start..start + INTS_PER_LINE].copy_from_slice(&buffer[..]);
                 buffer = [0i32; INTS_PER_LINE];
             }
         }
@@ -137,14 +135,18 @@ impl Matrix {
     pub fn preload_slice_mul(a: &Matrix, b: &Matrix) -> Matrix {
         assert_eq!(a.dim.1, b.dim.0);
         let mut mat = Matrix::new((a.dim.0, b.dim.1));
+        let mut buffer = [0i32; INTS_PER_LINE];
         let mut row = a.row(0);
-        for i in 0..a.dim.0 {
-            let mut col = b.col(0);
-            for j in 0..b.dim.1 {
-                let sum = row.iter().zip(col.iter())
-                    .map(|(x, y)| x * y).sum();
-                mat.set(i, j, sum);
-                col = b.col(j + 1);
+        for i in 0..mat.dim.0 {
+            let mut cols = b.cols_iter(0);
+            for j in (0..mat.dim.1).step_by(INTS_PER_LINE) {
+                row.iter().zip(cols)
+                    .for_each(|(row_ele, cols_ele)|
+                        Matrix::vec_scalar_mul(row_ele, cols_ele, &mut buffer));
+                let start = i * mat.row_size + j;
+                mat.data[start..start + INTS_PER_LINE].copy_from_slice(&buffer[..]);
+                buffer = [0i32; INTS_PER_LINE];
+                cols = b.cols_iter(j + INTS_PER_LINE);
             }
             row = a.row(i + 1);
         }
