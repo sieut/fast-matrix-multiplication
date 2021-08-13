@@ -247,4 +247,15 @@ mod tests {
         Matrix::vec_scalar_mul(&5, &vec[..], &mut buffer);
         assert_eq!([10; INTS_PER_LINE], buffer);
     }
+
+    #[test]
+    fn test_cols_iter() {
+        let a = Matrix::rand_matrix((4, 4));
+        let mut cols_iter = a.cols_iter(0);
+        assert_eq!(cols_iter.next().unwrap(), &a.data[0..INTS_PER_LINE]);
+        assert_eq!(cols_iter.next().unwrap(), &a.data[INTS_PER_LINE..INTS_PER_LINE * 2]);
+        assert_eq!(cols_iter.next().unwrap(), &a.data[INTS_PER_LINE * 2..INTS_PER_LINE * 3]);
+        assert_eq!(cols_iter.next().unwrap(), &a.data[INTS_PER_LINE * 3..INTS_PER_LINE * 4]);
+        assert!(cols_iter.next().is_none());
+    }
 }
