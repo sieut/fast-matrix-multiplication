@@ -3,6 +3,10 @@ extern crate rand;
 const LINESIZE: usize = 64;
 const INTS_PER_LINE: usize = LINESIZE / 4;
 
+#[repr(align(64))]
+#[derive(Clone, Copy)]
+struct AlignedBuffer([i32; INTS_PER_LINE]);
+
 pub struct Matrix {
     pub data: Vec<i32>,
     pub dim: (usize, usize),
@@ -17,8 +21,7 @@ impl Matrix {
         let line_per_row = (dim.1 * 4) / LINESIZE +
             ((dim.1 % LINESIZE != 0) as usize);
         let row_size = line_per_row * LINESIZE / 4;
-        // One extra row is allocated for preloading in preload_slice_mul
-        let data = vec![0; row_size * (dim.0 + 1)];
+        let data = unsafe { Matrix::aligned_data_buffer(row_size * dim.0) };
         // Allocate Vec for tdata, aligning each row with cache line
         let line_per_row = (dim.0 * 4) / LINESIZE +
             ((dim.0 % LINESIZE != 0) as usize);
@@ -31,6 +34,16 @@ impl Matrix {
             row_size,
             tdata_row_size,
         }
+    }
+
+    unsafe fn aligned_data_buffer(size: usize) -> Vec<i32> {
+        let capacity = size / INTS_PER_LINE;
+        let buffer = AlignedBuffer([0; INTS_PER_LINE]);
+        let mut aligned: Vec<AlignedBuffer> = vec![buffer; capacity];
+
+        let ptr = aligned.as_mut_ptr() as *mut i32;
+        std::mem::forget(aligned);
+        Vec::from_raw_parts(ptr, size, size)
     }
 
     pub fn naive_mul(a: &Matrix, b: &Matrix) -> Matrix {
@@ -65,18 +78,18 @@ impl Matrix {
 
     pub fn cacheline_optimized_col_mul(a: &Matrix, b: &Matrix) -> Matrix {
         assert_eq!(a.dim.1, b.dim.0);
+        let mut buffer = AlignedBuffer([0i32; INTS_PER_LINE]);
         let mut mat = Matrix::new((a.dim.0, b.dim.1));
-        let mut buffer = [0i32; INTS_PER_LINE];
         for i in 0..mat.dim.0 {
             let row = a.row(i);
             for j in (0..mat.dim.1).step_by(INTS_PER_LINE) {
                 let cols = b.cols_iter(j);
+                let start = i * mat.row_size + j;
                 row.iter().zip(cols)
                     .for_each(|(row_ele, cols_ele)|
-                        Matrix::vec_scalar_mul(row_ele, cols_ele, &mut buffer));
-                let start = i * mat.row_size + j;
-                mat.data[start..start + INTS_PER_LINE].copy_from_slice(&buffer[..]);
-                buffer = [0i32; INTS_PER_LINE];
+                        Matrix::vec_scalar_mul(row_ele, cols_ele, &mut buffer.0));
+                mat.data[start..start + INTS_PER_LINE].copy_from_slice(&buffer.0[..]);
+                buffer = AlignedBuffer([0i32; INTS_PER_LINE]);
             }
         }
         mat
@@ -247,6 +260,18 @@ mod tests {
         let mut buffer  = [0i32; INTS_PER_LINE];
         Matrix::vec_scalar_mul(&5, &vec[..], &mut buffer);
         assert_eq!([10; INTS_PER_LINE], buffer);
+    }
+
+    #[test]
+    fn test_construct_matrix() {
+        let mut matrices = vec![];
+        for _ in 0..200 {
+            let a = Matrix::new((24, 24));
+            assert_eq!(a.row_size, 32);
+            assert_eq!(a.data.len(), 32 * 24);
+            assert_eq!(a.data.as_ptr() as usize % LINESIZE, 0);
+            matrices.push(a);
+        }
     }
 
     #[test]
