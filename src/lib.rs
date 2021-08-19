@@ -146,27 +146,6 @@ impl Matrix {
         }
     }
 
-    pub fn preload_slice_mul(a: &Matrix, b: &Matrix) -> Matrix {
-        assert_eq!(a.dim.1, b.dim.0);
-        let mut mat = Matrix::new((a.dim.0, b.dim.1));
-        let mut buffer = [0i32; INTS_PER_LINE];
-        let mut row = a.row(0);
-        for i in 0..mat.dim.0 {
-            let mut cols = b.cols_iter(0);
-            for j in (0..mat.dim.1).step_by(INTS_PER_LINE) {
-                row.iter().zip(cols)
-                    .for_each(|(row_ele, cols_ele)|
-                        Matrix::vec_scalar_mul(row_ele, cols_ele, &mut buffer));
-                let start = i * mat.row_size + j;
-                mat.data[start..start + INTS_PER_LINE].copy_from_slice(&buffer[..]);
-                buffer = [0i32; INTS_PER_LINE];
-                cols = b.cols_iter(j + INTS_PER_LINE);
-            }
-            row = a.row(i + 1);
-        }
-        mat
-    }
-
     pub fn get(&self, i: usize, j: usize) -> i32 {
         return self.data[i * self.row_size + j];
     }
@@ -251,7 +230,6 @@ mod tests {
         let naive = Matrix::naive_mul(&a, &b);
         assert_eq!(naive.data, Matrix::cached_tdata_mul(&a, &b).data);
         assert_eq!(naive.data, Matrix::cacheline_optimized_col_mul(&a, &b).data);
-        assert_eq!(naive.data, Matrix::preload_slice_mul(&a, &b).data);
     }
 
     #[test]
