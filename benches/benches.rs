@@ -19,6 +19,9 @@ fn bench_muls(c: &mut Criterion) {
     group.bench_function(
         "Cacheline Optimized Columns Multiplication",
         |bencher| bencher.iter(|| Matrix::cacheline_optimized_col_mul(black_box(&a), black_box(&b))));
+    group.bench_function(
+        "SIMD Buffers Multiplication",
+        |bencher| bencher.iter(|| Matrix::simd_structs_mul(black_box(&a), black_box(&b))));
 }
 
 criterion_group!(benches, bench_muls);

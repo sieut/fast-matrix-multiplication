@@ -1,11 +1,22 @@
 extern crate rand;
 
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
+
 const LINESIZE: usize = 64;
 const INTS_PER_LINE: usize = LINESIZE / 4;
 
 #[repr(align(64))]
 #[derive(Clone, Copy)]
 struct AlignedBuffer([i32; INTS_PER_LINE]);
+
+#[repr(align(64))]
+union SimdCacheLine {
+    array: [i32; INTS_PER_LINE],
+    simd: [__m256i; 2],
+}
 
 pub struct Matrix {
     pub data: Vec<i32>,
@@ -95,6 +106,40 @@ impl Matrix {
         mat
     }
 
+    /// Similar to cacheline_optimized_col_mul, but use SIMD structs for buffer
+    /// instead of an array
+    #[allow(unreachable_code)]
+    pub fn simd_structs_mul(a: &Matrix, b: &Matrix) -> Matrix {
+        #[cfg(not(target_feature = "avx2"))]
+        compile_error!("simd_structs_mul needs to be compiled with avx2");
+
+        assert_eq!(a.dim.1, b.dim.0);
+        let mut buffer = unsafe {
+            SimdCacheLine {
+                simd: [_mm256_setzero_si256(), _mm256_setzero_si256()]
+            }
+        };
+        let mut mat = Matrix::new((a.dim.0, b.dim.1));
+        for i in 0..mat.dim.0 {
+            let row = a.row(i);
+            for j in (0..mat.dim.1).step_by(INTS_PER_LINE) {
+                let cols = b.cols_iter(j);
+                let start = i * mat.row_size + j;
+                row.iter().zip(cols)
+                    .for_each(|(row_ele, cols_ele)|
+                        Matrix::vec_scalar_mul_simd_buf(row_ele, cols_ele, &mut buffer));
+                unsafe {
+                    mat.data[start..start + INTS_PER_LINE].copy_from_slice(
+                        &buffer.array[..]);
+                    buffer = SimdCacheLine {
+                        simd: [_mm256_setzero_si256(), _mm256_setzero_si256()]
+                    };
+                }
+            }
+        }
+        mat
+    }
+
     /// Perform scalar multiplication on vec, then adds the result to output
     /// using SIMD instructions
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
@@ -105,14 +150,6 @@ impl Matrix {
         output: &mut [i32],
     ) {
         unsafe {
-            #[cfg(target_arch = "x86")]
-            use std::arch::x86::{
-                _mm256_set_epi32, _mm256_load_si256, _mm256_mullo_epi32,
-                _mm256_add_epi32, __m256i};
-            #[cfg(target_arch = "x86_64")]
-            use std::arch::x86_64::{
-                _mm256_set_epi32, _mm256_load_si256, _mm256_mullo_epi32,
-                _mm256_add_epi32, __m256i};
             // Optimized by Rust by using broadcast instr
             let scalar = _mm256_set_epi32(
                 scalar.clone(), scalar.clone(), scalar.clone(), scalar.clone(),
@@ -143,6 +180,31 @@ impl Matrix {
     ) {
         for (i, col_ele) in vec.iter().enumerate() {
             output[i] += scalar * col_ele;
+        }
+    }
+
+    /// Perform scalar multiplication on vec, then adds the result to output
+    /// using SIMD instructions, and takes in SIMD vecs as output buffers
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
+                  target_feature = "avx2"))]
+    fn vec_scalar_mul_simd_buf(
+        scalar: &i32,
+        vec: &[i32],
+        output: &mut SimdCacheLine,
+    ) {
+        unsafe {
+            // Optimized by Rust by using broadcast instr
+            let scalar = _mm256_set_epi32(
+                scalar.clone(), scalar.clone(), scalar.clone(), scalar.clone(),
+                scalar.clone(), scalar.clone(), scalar.clone(), scalar.clone());
+            // Multiplication and addition on first 8 ints
+            let simd_vec = _mm256_load_si256(vec.as_ptr() as *const __m256i);
+            let simd_vec = _mm256_mullo_epi32(scalar, simd_vec);
+            output.simd[0] = _mm256_add_epi32(simd_vec, output.simd[0]);
+            // Multiplication and addition on second 8 ints
+            let simd_vec = _mm256_load_si256(vec.as_ptr().add(8) as *const __m256i);
+            let simd_vec = _mm256_mullo_epi32(scalar, simd_vec);
+            output.simd[1] = _mm256_add_epi32(simd_vec, output.simd[1]);
         }
     }
 
@@ -230,6 +292,7 @@ mod tests {
         let naive = Matrix::naive_mul(&a, &b);
         assert_eq!(naive.data, Matrix::cached_tdata_mul(&a, &b).data);
         assert_eq!(naive.data, Matrix::cacheline_optimized_col_mul(&a, &b).data);
+        assert_eq!(naive.data, Matrix::simd_structs_mul(&a, &b).data);
     }
 
     #[test]
@@ -238,6 +301,16 @@ mod tests {
         let mut buffer  = [0i32; INTS_PER_LINE];
         Matrix::vec_scalar_mul(&5, &vec[..], &mut buffer);
         assert_eq!([10; INTS_PER_LINE], buffer);
+
+        // #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),
+        //               target_feature = "avx2"))]
+        // unsafe {
+        //     let mut simd_buffer = SimdCacheLine {
+        //         simd: [_mm256_setzero_si256(), _mm256_setzero_si256()]
+        //     };
+        //     Matrix::vec_scalar_mul_simd_buf(&5, &vec[..], &mut simd_buffer);
+        //     assert_eq!([10; INTS_PER_LINE], buffer);
+        // };
     }
 
     #[test]
